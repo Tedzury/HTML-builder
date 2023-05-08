@@ -25,7 +25,7 @@ function giveMeStyleBundle(stylesFolder, bundleDestinationFolder) {
           readableStream.on('data', chunk => {
             fs.appendFile(
               path.resolve(bundleDestinationFolder, 'bundle.css'),
-              chunk,
+              chunk + '\n',
               (err) => {if (err) console.log9(err)}
             )
           })

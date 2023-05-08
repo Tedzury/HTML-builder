@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { mkdir, readdir } = fs.promises;
+const { mkdir, readdir, rm, access} = fs.promises;
 
 const mkDirOptions = {
   recursive: true,
@@ -12,16 +12,29 @@ const readDirOptions = {
   withFileTypes: true
 }
 
-function copyDir(source, destination) {
+async function doesExist(path) {
+  try{
+    await access(path, fs.constants.R_OK | fs.constants.W_OK);
+    return true;
+  }
+  catch (err) {
+    if (err) return false;
+  }
+}
+
+async function copyDir(source, destination) {
 
   const sourceFolderPath = path.resolve(path.basename(__dirname), source);
   const destinationFolderPath = path.resolve(path.basename(__dirname), destination);
 
-  fs.access(destinationFolderPath, err => {
-    if (err) mkdir(destinationFolderPath, mkDirOptions);
+  const dirExistence = await doesExist(destinationFolderPath)
 
-    readdir(sourceFolderPath, readDirOptions)
-      .then(files => {
+  if (dirExistence) {
+    await rm(destinationFolderPath, {recursive: true})
+  }
+    await mkdir(destinationFolderPath, mkDirOptions);
+    await readdir(sourceFolderPath, readDirOptions)
+      .then(async(files) => {
         for (let file of files) {
           if (file.isFile()) {
             fs.copyFile( 
@@ -37,7 +50,7 @@ function copyDir(source, destination) {
         }
       })
     .catch( err => console.log(err))
-  })
+
 }
 
 copyDir('files', 'files-copy')

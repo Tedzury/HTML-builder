@@ -10,7 +10,6 @@ const options = {
 function formFileStatistic(pathToFile, _file) {
 
   let name = path.basename(_file.name).substring(0, path.basename(_file.name).indexOf('.'));
-  if (name === '') name = '.gitkeep';
   const ext = path.extname(_file.name).slice(1);
 
   fs.stat(path.join(pathToFile, _file.name), (err, stats) => {
@@ -18,7 +17,7 @@ function formFileStatistic(pathToFile, _file) {
       console.log(err);
     }
     else {
-      const size = stats.size + 'kb'
+      const size = stats.size + 'b'
       console.log(`${name} - ${ext} - ${size}`)
     }
   })
@@ -31,12 +30,8 @@ function readDirectory(folder) {
   readdir(folderpath, options)
   .then(files => {
     for (let file of files) {
-      if (file.isFile()) {
+      if (file.isFile()) 
         formFileStatistic(folderpath, file);
-      } else {
-        const newFolderPath = path.resolve(path.basename(__dirname), folder, file.name)
-        readDirectory(newFolderPath)
-      }
     }
   })
   .catch( err => console.log(err))

@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const { mkdir, readdir } = fs.promises;
+const { isGeneratorFunction } = require('util/types');
+const { mkdir, readdir, rm, access} = fs.promises;
 
 const rootFolder = path.basename(__dirname);
 const htmlComponentsFolder = path.resolve(path.basename(__dirname), 'components');
@@ -18,7 +19,7 @@ const mkDirOptions = {
   mode: 0777,
 }
 
-function giveMeHtmlComponent(template, componentName, replaceablePart) {
+async function giveMeHtmlComponent(template, componentName, replaceablePart) {
   return new Promise( resolve => {
     const _path = path.resolve(htmlComponentsFolder, componentName);
     let component = '';
@@ -31,32 +32,42 @@ function giveMeHtmlComponent(template, componentName, replaceablePart) {
   })
 }
 
-function prepareHtmlLayout() {
+async function giveMeHtmlTemplate() {
 
-  return new Promise((resolve) => {
-      const htmlTemplatePath = path.resolve(rootFolder, 'template.html');
-      let htmlTemplate = '';
-      const htmlTemplateStream = fs.createReadStream(htmlTemplatePath, 'utf-8');
-      htmlTemplateStream.on('data', chunk => {
-        htmlTemplate += chunk;
-      })
-      htmlTemplateStream.on('end', () => resolve(htmlTemplate));
-      htmlTemplateStream.on('error', err => console.log(err));
+  const htmlTemplatePath = path.resolve(rootFolder, 'template.html');
+  let htmlTemplate = '';
+  const htmlTemplateStream = fs.createReadStream(htmlTemplatePath, 'utf-8');
+  htmlTemplateStream.on('data', chunk => {
+    htmlTemplate += chunk;
+  })
+  htmlTemplateStream.on('end', () => prepareAndRenderLayout(htmlTemplate));
+  htmlTemplateStream.on('error', err => console.log(err)); 
+}
+
+async function prepareAndRenderLayout(template) {
+  
+  let updatedTemplate = template;
+  const htmlList = [];  
+  await readdir(htmlComponentsFolder, readDirOptions)
+  .then(async(files) => {
+    for (let file of files) {
+      if (file.isFile()) {
+        htmlList.push(file.name.substring(0, file.name.indexOf('.')))
+      }
+    }
+    for( let file of htmlList) {
+      updatedTemplate = await giveMeHtmlComponent(updatedTemplate, `${file}.html`, `{{${file}}}`)
+    }
+    fs.access(projectDistFolder, err => {
+      if (err) mkdir(projectDistFolder);
+      fs.writeFile(
+        path.resolve(projectDistFolder, 'index.html'),
+        updatedTemplate,
+        err => {if (err) console.log(err)}
+      )
     })
-    .then(updatedHtml => giveMeHtmlComponent(updatedHtml, 'header.html', '{{header}}'))
-    .then(updatedHtml => giveMeHtmlComponent(updatedHtml, 'articles.html', '{{articles}}'))
-    .then(updatedHtml => giveMeHtmlComponent(updatedHtml, 'footer.html', '{{footer}}'))
-    .then( updatedHtml => {
-      fs.access(projectDistFolder, err => {
-        if (err) mkdir(projectDistFolder);
-        fs.writeFile(
-          path.resolve(projectDistFolder, 'index.html'),
-          updatedHtml,
-          err => {if (err) console.log(err)}
-        )
-      })
-    })
-    .catch(err => console.log(err))
+  })
+  .catch( err => console.log(err))
 }
 
 function giveMeStyleBundle(_stylesFolder, bundleDestinationFolder) {
@@ -76,7 +87,7 @@ function giveMeStyleBundle(_stylesFolder, bundleDestinationFolder) {
             readableStream.on('data', chunk => {
               fs.appendFile(
                 path.resolve(bundleDestinationFolder, 'style.css'),
-                chunk,
+                chunk + '\n',
                 (err) => {if (err) console.log(err)}
               )
             })
@@ -87,13 +98,26 @@ function giveMeStyleBundle(_stylesFolder, bundleDestinationFolder) {
   })
   
 }
-function copyDir(source, destination) {
 
-  fs.access(destination, err => {
-    if (err) mkdir(destination, mkDirOptions);
+async function doesExist(path) {
+  try{
+    await access(path, fs.constants.R_OK | fs.constants.W_OK);
+    return true;
+  }
+  catch (err) {
+    if (err) return false;
+  }
+}
+async function copyDir(source, destination) {
 
-    readdir(source, readDirOptions)
-      .then(files => {
+  const dirExistence = await doesExist(destination)
+
+  if (dirExistence) {
+    await rm(destination, {recursive: true})
+  }
+    await mkdir(destination, mkDirOptions);
+    await readdir(source, readDirOptions)
+      .then(async(files) => {
         for (let file of files) {
           if (file.isFile()) {
             fs.copyFile( 
@@ -102,16 +126,16 @@ function copyDir(source, destination) {
               err => { if (err) console.log(err)}
             )
           } else {
-            const newSource = path.resolve(path.basename(__dirname), source, file.name)
-            const newDestination = path.resolve(path.basename(__dirname), destination, file.name)
+            const newSource = path.resolve(source, file.name)
+            const newDestination = path.resolve(destination, file.name)
             copyDir(newSource, newDestination)
           }
         }
       })
     .catch( err => console.log(err))
-  })
+
 }
 
-prepareHtmlLayout()
 giveMeStyleBundle(stylesFolder, projectDistFolder)
+giveMeHtmlTemplate()
 copyDir(assetsFolder, copiedAssetsFolder)
